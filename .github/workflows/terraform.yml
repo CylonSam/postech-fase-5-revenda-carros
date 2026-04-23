@@ -77,7 +77,7 @@ jobs:
           terraform init \
             -backend-config="bucket=${{ secrets.TF_BACKEND_BUCKET }}" \
             -backend-config="key=${{ secrets.TF_BACKEND_KEY }}" \
-            -backend-config="region=${{ secrets.TF_BACKEND_REGION || secrets.AWS_REGION }}"
+            -backend-config="region=${{ secrets.TF_BACKEND_REGION }}"
         working-directory: ${{ env.TF_WORKING_DIR }}
 
       - name: Terraform Plan
