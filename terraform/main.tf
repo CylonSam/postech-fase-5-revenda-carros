@@ -43,8 +43,8 @@ module "lambda" {
   db_endpoint        = module.rds.endpoint
   db_name            = var.db_name
   sqs_queue_url      = module.sqs.queue_url
-  sqs_queue_arn     = module.sqs.queue_arn
-  step_function_arn = local.step_function_arn
+  sqs_queue_arn      = module.sqs.queue_arn
+  step_function_arn  = local.step_function_arn
 }
 
 module "step_functions" {
