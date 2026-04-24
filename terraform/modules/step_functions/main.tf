@@ -6,7 +6,7 @@ resource "aws_cloudwatch_log_group" "sfn" {
 resource "aws_sfn_state_machine" "car_sale_saga" {
   name     = "${var.name_prefix}-car-sale-saga"
   role_arn = aws_iam_role.sfn_exec.arn
-  type     = "EXPRESS"
+  type     = "STANDARD"
 
   definition = templatefile("${path.module}/state_machine.json.tpl", {
     orders_lambda_arn = var.lambda_arns["orders"]
