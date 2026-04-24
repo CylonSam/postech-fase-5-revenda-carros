@@ -1,0 +1,10 @@
+aws_region   = "us-east-1"
+project_name = "revenda-carros"
+vpc_cidr          = "10.0.0.0/16"
+db_name           = "revendadb"
+db_instance_class = "db.t3.micro"
+lambda_runtime    = "python3.12"
+
+# Sensitive — do not commit actual values; provide via TF_VAR_* env vars or -var flags
+db_username = "CHANGE_ME"
+db_password = "CHANGE_ME"

@@ -1,0 +1,170 @@
+name: Terraform CI/CD
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "terraform/**"
+  push:
+    branches: [main]
+    paths:
+      - "terraform/**"
+  workflow_dispatch:
+
+permissions:
+  id-token: write       # required for OIDC authentication
+  contents: read
+  pull-requests: write  # required to post plan as PR comment
+
+env:
+  TF_WORKING_DIR: terraform
+  AWS_REGION: us-east-1
+
+jobs:
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.6.6"
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+      - name: Terraform Init (local validation only)
+        run: terraform init -backend=false
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+      - name: Terraform Validate
+        run: terraform validate
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        env:
+          TF_VAR_db_username: "validate_placeholder"
+          TF_VAR_db_password: "validate_placeholder"
+
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    needs: validate
+    defaults:
+      run:
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+    outputs:
+      exitcode: ${{ steps.plan.outputs.exitcode }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.6.6"
+
+      - name: Terraform Init (with S3 backend from secrets)
+        id: init
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ secrets.TF_BACKEND_BUCKET }}" \
+            -backend-config="key=${{ secrets.TF_BACKEND_KEY }}" \
+            -backend-config="region=${{ secrets.TF_BACKEND_REGION }}"
+
+      - name: Terraform Plan
+        id: plan
+        run: |
+          terraform plan \
+            -out=tfplan \
+            -detailed-exitcode \
+            -no-color \
+            2>&1 | tee plan_output.txt
+          echo "exitcode=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+        env:
+          TF_VAR_db_password: ${{ secrets.TF_VAR_db_password }}
+          TF_VAR_db_username: ${{ secrets.TF_VAR_db_username }}
+        continue-on-error: true
+
+      - name: Post Plan to PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('${{ env.TF_WORKING_DIR }}/plan_output.txt', 'utf8');
+            const maxLength = 65000;
+            const truncated = plan.length > maxLength
+              ? plan.substring(0, maxLength) + '\n\n... (truncated)'
+              : plan;
+            const exitcode = '${{ steps.plan.outputs.exitcode }}';
+            const status = exitcode === '0' ? '✅ No changes' : exitcode === '2' ? '⚠️ Changes detected' : '❌ Plan failed';
+            const body = `## Terraform Plan — ${status}\n\n<details><summary>Show Plan</summary>\n\n\`\`\`terraform\n${truncated}\n\`\`\`\n\n</details>`;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body,
+            });
+
+      - name: Fail if Plan Failed
+        if: steps.plan.outputs.exitcode == '1'
+        run: exit 1
+
+      - name: Upload Plan Artifact
+        if: steps.plan.outputs.exitcode == '2'
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan
+          path: ${{ env.TF_WORKING_DIR }}/tfplan
+          retention-days: 1
+
+  apply:
+    name: Apply
+    runs-on: ubuntu-latest
+    needs: plan
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && needs.plan.outputs.exitcode == '2'
+    defaults:
+      run:
+        working-directory: ${{ env.TF_WORKING_DIR }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.6.6"
+
+      - name: Terraform Init
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ secrets.TF_BACKEND_BUCKET }}" \
+            -backend-config="key=${{ secrets.TF_BACKEND_KEY }}" \
+            -backend-config="region=${{ secrets.TF_BACKEND_REGION || secrets.AWS_REGION }}"
+
+      - name: Download Plan Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan
+          path: ${{ env.TF_WORKING_DIR }}
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve tfplan
