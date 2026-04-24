@@ -159,11 +159,17 @@ jobs:
             -backend-config="key=${{ secrets.TF_BACKEND_KEY }}" \
             -backend-config="region=${{ secrets.TF_BACKEND_REGION }}"
 
+      - name: No changes
+        if: needs.plan.outputs.exitcode == '0'
+        run: echo "No changes detected by Terraform plan. Nothing to apply."
+
       - name: Download Plan Artifact
+        if: needs.plan.outputs.exitcode == '2'
         uses: actions/download-artifact@v4
         with:
           name: tfplan
           path: ${{ env.TF_WORKING_DIR }}
 
       - name: Terraform Apply
+        if: needs.plan.outputs.exitcode == '2'
         run: terraform apply -auto-approve tfplan
