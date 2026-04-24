@@ -75,6 +75,10 @@ jobs:
         with:
           terraform_version: "1.6.6"
 
+      - name: Build Lambda placeholder zip
+        run: zip lambda_placeholders/placeholder.zip lambda_placeholders/index.py
+        working-directory: ${{ github.workspace }}
+
       - name: Terraform Init (with S3 backend from secrets)
         id: init
         run: |
@@ -151,6 +155,10 @@ jobs:
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "1.6.6"
+
+      - name: Build Lambda placeholder zip
+        run: zip lambda_placeholders/placeholder.zip lambda_placeholders/index.py
+        working-directory: ${{ github.workspace }}
 
       - name: Terraform Init
         run: |
