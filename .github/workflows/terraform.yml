@@ -5,10 +5,12 @@ on:
     branches: [main]
     paths:
       - "terraform/**"
+      - "lambdas/**"
   push:
     branches: [main]
     paths:
       - "terraform/**"
+      - "lambdas/**"
   workflow_dispatch:
 
 permissions:
@@ -74,10 +76,6 @@ jobs:
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "1.6.6"
-
-      - name: Build Lambda placeholder zip
-        run: zip lambda_placeholders/placeholder.zip lambda_placeholders/index.py
-        working-directory: ${{ github.workspace }}
 
       - name: Terraform Init (with S3 backend from secrets)
         id: init
@@ -155,10 +153,6 @@ jobs:
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "1.6.6"
-
-      - name: Build Lambda placeholder zip
-        run: zip lambda_placeholders/placeholder.zip lambda_placeholders/index.py
-        working-directory: ${{ github.workspace }}
 
       - name: Terraform Init
         run: |

@@ -44,3 +44,18 @@ variable "step_function_arn" {
   description = "ARN of the Step Functions state machine"
   type        = string
 }
+
+variable "cognito_user_pool_id" {
+  description = "Cognito User Pool ID"
+  type        = string
+}
+
+variable "cognito_client_id" {
+  description = "Cognito App Client ID"
+  type        = string
+}
+
+variable "cognito_user_pool_arn" {
+  description = "Cognito User Pool ARN (used to scope IAM permissions)"
+  type        = string
+}

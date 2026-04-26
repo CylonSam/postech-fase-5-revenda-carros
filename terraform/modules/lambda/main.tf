@@ -1,32 +1,40 @@
 locals {
+  _placeholder = "${path.module}/../../../lambda_placeholders/index.py"
+
   functions = {
-    user = {
-      timeout = 30
-      memory  = 128
-    }
     auth = {
       timeout = 30
       memory  = 128
+      source  = "${path.module}/../../../lambdas/auth/index.py"
+    }
+    user = {
+      timeout = 30
+      memory  = 128
+      source  = "${path.module}/../../../lambdas/user/index.py"
     }
     vehicles = {
       timeout = 30
       memory  = 128
+      source  = local._placeholder
     }
     orders = {
       timeout = 60
       memory  = 256
+      source  = local._placeholder
     }
     stock = {
       timeout = 60
       memory  = 256
+      source  = local._placeholder
     }
   }
 }
 
-data "archive_file" "placeholder" {
+data "archive_file" "functions" {
+  for_each    = local.functions
   type        = "zip"
-  source_file = "${path.module}/../../../lambda_placeholders/index.py"
-  output_path = "${path.module}/../../../lambda_placeholders/placeholder.zip"
+  source_file = each.value.source
+  output_path = "${path.module}/archives/${each.key}.zip"
 }
 
 resource "aws_lambda_function" "functions" {
@@ -35,12 +43,12 @@ resource "aws_lambda_function" "functions" {
   function_name = "${var.name_prefix}-${each.key}"
   role          = aws_iam_role.lambda_exec.arn
   runtime       = var.runtime
-  handler       = "index.handler" # index.py → handler()
+  handler       = "index.handler"
   timeout       = each.value.timeout
   memory_size   = each.value.memory
 
-  filename         = data.archive_file.placeholder.output_path
-  source_code_hash = data.archive_file.placeholder.output_base64sha256
+  filename         = data.archive_file.functions[each.key].output_path
+  source_code_hash = data.archive_file.functions[each.key].output_base64sha256
 
   vpc_config {
     subnet_ids         = var.private_subnet_ids
@@ -49,11 +57,13 @@ resource "aws_lambda_function" "functions" {
 
   environment {
     variables = {
-      DB_ENDPOINT       = var.db_endpoint
-      DB_NAME           = var.db_name
-      DB_PORT           = "5432"
-      SQS_QUEUE_URL     = var.sqs_queue_url
-      STEP_FUNCTION_ARN = var.step_function_arn
+      DB_ENDPOINT          = var.db_endpoint
+      DB_NAME              = var.db_name
+      DB_PORT              = "5432"
+      SQS_QUEUE_URL        = var.sqs_queue_url
+      STEP_FUNCTION_ARN    = var.step_function_arn
+      COGNITO_USER_POOL_ID = var.cognito_user_pool_id
+      COGNITO_CLIENT_ID    = var.cognito_client_id
     }
   }
 
