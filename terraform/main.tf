@@ -35,16 +35,19 @@ module "sqs" {
 }
 
 module "lambda" {
-  source             = "./modules/lambda"
-  name_prefix        = local.name_prefix
-  runtime            = var.lambda_runtime
-  private_subnet_ids = module.vpc.private_subnet_ids
-  lambda_sg_id       = module.vpc.lambda_sg_id
-  db_endpoint        = module.rds.endpoint
-  db_name            = var.db_name
-  sqs_queue_url      = module.sqs.queue_url
-  sqs_queue_arn      = module.sqs.queue_arn
-  step_function_arn  = local.step_function_arn
+  source                = "./modules/lambda"
+  name_prefix           = local.name_prefix
+  runtime               = var.lambda_runtime
+  private_subnet_ids    = module.vpc.private_subnet_ids
+  lambda_sg_id          = module.vpc.lambda_sg_id
+  db_endpoint           = module.rds.endpoint
+  db_name               = var.db_name
+  sqs_queue_url         = module.sqs.queue_url
+  sqs_queue_arn         = module.sqs.queue_arn
+  step_function_arn     = local.step_function_arn
+  cognito_user_pool_id  = module.cognito.user_pool_id
+  cognito_client_id     = module.cognito.client_id
+  cognito_user_pool_arn = module.cognito.user_pool_arn
 }
 
 module "step_functions" {

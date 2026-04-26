@@ -46,6 +46,19 @@ data "aws_iam_policy_document" "lambda_custom" {
     actions   = ["states:SendTaskSuccess", "states:SendTaskFailure"]
     resources = ["*"]
   }
+
+  statement {
+    sid    = "CognitoAccess"
+    effect = "Allow"
+    actions = [
+      "cognito-idp:InitiateAuth",
+      "cognito-idp:SignUp",
+      "cognito-idp:AdminConfirmSignUp",
+      "cognito-idp:AdminGetUser",
+      "cognito-idp:AdminUpdateUserAttributes",
+    ]
+    resources = [var.cognito_user_pool_arn]
+  }
 }
 
 resource "aws_iam_policy" "lambda_custom" {

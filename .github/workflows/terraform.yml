@@ -5,10 +5,12 @@ on:
     branches: [main]
     paths:
       - "terraform/**"
+      - "lambdas/**"
   push:
     branches: [main]
     paths:
       - "terraform/**"
+      - "lambdas/**"
   workflow_dispatch:
 
 permissions:
@@ -21,6 +23,25 @@ env:
   AWS_REGION: us-east-1
 
 jobs:
+  test:
+    name: Test Lambda Functions
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install test dependencies
+        run: pip install -r lambdas/requirements-test.txt
+
+      - name: Run tests
+        run: pytest lambdas/ -v --tb=short
+
   validate:
     name: Validate
     runs-on: ubuntu-latest
@@ -52,7 +73,7 @@ jobs:
   plan:
     name: Plan
     runs-on: ubuntu-latest
-    needs: validate
+    needs: [validate, test]
     defaults:
       run:
         working-directory: ${{ env.TF_WORKING_DIR }}
@@ -74,10 +95,6 @@ jobs:
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "1.6.6"
-
-      - name: Build Lambda placeholder zip
-        run: zip lambda_placeholders/placeholder.zip lambda_placeholders/index.py
-        working-directory: ${{ github.workspace }}
 
       - name: Terraform Init (with S3 backend from secrets)
         id: init
@@ -155,10 +172,6 @@ jobs:
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "1.6.6"
-
-      - name: Build Lambda placeholder zip
-        run: zip lambda_placeholders/placeholder.zip lambda_placeholders/index.py
-        working-directory: ${{ github.workspace }}
 
       - name: Terraform Init
         run: |
