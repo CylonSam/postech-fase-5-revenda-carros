@@ -34,6 +34,13 @@ _conn.run(
 
 _SELECT = "SELECT id, brand, model, year, color, price, plate FROM vehicles"
 
+_WRITE_ROLES = {"admin", "operator"}
+
+
+def _groups(event):
+    raw = event["requestContext"]["authorizer"]["jwt"]["claims"].get("cognito:groups", "")
+    return set(raw.replace(",", " ").split()) if raw else set()
+
 
 def _response(status_code, body):
     return {
@@ -104,6 +111,8 @@ def _get_vehicle(event):
 
 
 def _create_vehicle(event):
+    if not (_groups(event) & _WRITE_ROLES):
+        return _response(403, {"error": "Insufficient permissions"})
     body = json.loads(event.get("body") or "{}")
     data, err = _validate_body(body)
     if err:
@@ -124,6 +133,8 @@ def _create_vehicle(event):
 
 
 def _update_vehicle(event):
+    if not (_groups(event) & _WRITE_ROLES):
+        return _response(403, {"error": "Insufficient permissions"})
     vehicle_id = (event.get("pathParameters") or {}).get("id", "")
     body = json.loads(event.get("body") or "{}")
     data, err = _validate_body(body)

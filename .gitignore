@@ -31,3 +31,5 @@ lambdas/vehicles/scramp/
 lambdas/vehicles/scramp*.dist-info/
 lambdas/vehicles/asn1crypto/
 lambdas/vehicles/asn1crypto*.dist-info/
+
+CLAUDE.md

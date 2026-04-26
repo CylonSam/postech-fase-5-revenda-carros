@@ -56,6 +56,7 @@ data "aws_iam_policy_document" "lambda_custom" {
       "cognito-idp:AdminConfirmSignUp",
       "cognito-idp:AdminGetUser",
       "cognito-idp:AdminUpdateUserAttributes",
+      "cognito-idp:AdminAddUserToGroup",
     ]
     resources = [var.cognito_user_pool_arn]
   }
