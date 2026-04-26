@@ -150,6 +150,13 @@ jobs:
           path: ${{ env.TF_WORKING_DIR }}/tfplan
           retention-days: 1
 
+      - name: Upload Lambda archives
+        uses: actions/upload-artifact@v4
+        with:
+          name: lambda-archives
+          path: ${{ env.TF_WORKING_DIR }}/modules/lambda/archives/
+          retention-days: 1
+
   apply:
     name: Apply
     runs-on: ubuntu-latest
@@ -185,6 +192,12 @@ jobs:
         with:
           name: tfplan
           path: ${{ env.TF_WORKING_DIR }}
+
+      - name: Download Lambda archives
+        uses: actions/download-artifact@v4
+        with:
+          name: lambda-archives
+          path: ${{ env.TF_WORKING_DIR }}/modules/lambda/archives
 
       - name: Terraform Apply
         run: terraform apply -auto-approve tfplan
