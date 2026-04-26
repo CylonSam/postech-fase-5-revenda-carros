@@ -37,9 +37,30 @@ def _register(body):
     email = body.get("email", "").strip()
     password = body.get("password", "")
     name = body.get("name", "").strip()
+    tax_id = body.get("taxId", "").strip()
+    document_id = body.get("documentId", "").strip()
+    birth_date = body.get("birthDate", "").strip()
+    address = body.get("address", "").strip()
+    phone = body.get("phone", "").strip()
+    drivers_license_id = body.get("driversLicenseId", "").strip()
+    drivers_license_cat = body.get("category", "").strip()
+    drivers_license_exp = body.get("driversLicenseExpDate", "").strip()
 
-    if not email or not password or not name:
-        return _response(400, {"error": "email, password and name are required"})
+    missing = [
+        f for f, v in {
+            "email": email,
+            "password": password,
+            "name": name,
+            "taxId": tax_id,
+            "documentId": document_id,
+            "birthDate": birth_date,
+            "address": address,
+            "phone": phone,
+        }.items()
+        if not v
+    ]
+    if missing:
+        return _response(400, {"error": f"Missing required fields: {', '.join(missing)}"})
 
     try:
         result = cognito.sign_up(
@@ -49,6 +70,14 @@ def _register(body):
             UserAttributes=[
                 {"Name": "email", "Value": email},
                 {"Name": "name", "Value": name},
+                {"Name": "phone_number", "Value": phone},
+                {"Name": "birthdate", "Value": birth_date},
+                {"Name": "address", "Value": address},
+                {"Name": "custom:tax_id", "Value": tax_id},
+                {"Name": "custom:document_id", "Value": document_id},
+                {"Name": "custom:drivers_license_id", "Value": drivers_license_id},
+                {"Name": "custom:drivers_license_cat", "Value": drivers_license_cat},
+                {"Name": "custom:drivers_license_exp", "Value": drivers_license_exp},
             ],
         )
         # Auto-confirm so callers can log in immediately without email verification

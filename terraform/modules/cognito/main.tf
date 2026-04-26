@@ -37,6 +37,66 @@ resource "aws_cognito_user_pool" "main" {
     }
   }
 
+  schema {
+    name                = "tax_id"
+    attribute_data_type = "String"
+    mutable             = true
+    required            = true
+
+    string_attribute_constraints {
+      min_length = 1
+      max_length = 20
+    }
+  }
+
+  schema {
+    name                = "document_id"
+    attribute_data_type = "String"
+    mutable             = true
+    required            = true
+
+    string_attribute_constraints {
+      min_length = 1
+      max_length = 30
+    }
+  }
+
+  schema {
+    name                = "drivers_license_id"
+    attribute_data_type = "String"
+    mutable             = true
+    required            = false
+
+    string_attribute_constraints {
+      min_length = 1
+      max_length = 30
+    }
+  }
+
+  schema {
+    name                = "drivers_license_cat"
+    attribute_data_type = "String"
+    mutable             = true
+    required            = false
+
+    string_attribute_constraints {
+      min_length = 1
+      max_length = 5
+    }
+  }
+
+  schema {
+    name                = "drivers_license_exp"
+    attribute_data_type = "String"
+    mutable             = true
+    required            = false
+
+    string_attribute_constraints {
+      min_length = 1
+      max_length = 10
+    }
+  }
+
   account_recovery_setting {
     recovery_mechanism {
       name     = "verified_email"
