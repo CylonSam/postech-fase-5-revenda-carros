@@ -5,36 +5,52 @@ locals {
     auth = {
       timeout = 30
       memory  = 128
-      source  = "${path.module}/../../../lambdas/auth/index.py"
     }
     user = {
       timeout = 30
       memory  = 128
-      source  = "${path.module}/../../../lambdas/user/index.py"
     }
     vehicles = {
       timeout = 30
       memory  = 128
-      source  = local._placeholder
     }
     orders = {
       timeout = 60
       memory  = 256
-      source  = local._placeholder
     }
     stock = {
       timeout = 60
       memory  = 256
-      source  = local._placeholder
     }
+  }
+
+  _single_file_sources = {
+    auth   = "${path.module}/../../../lambdas/auth/index.py"
+    user   = "${path.module}/../../../lambdas/user/index.py"
+    orders = local._placeholder
+    stock  = local._placeholder
   }
 }
 
-data "archive_file" "functions" {
-  for_each    = local.functions
+data "archive_file" "single_file_functions" {
+  for_each    = local._single_file_sources
   type        = "zip"
-  source_file = each.value.source
+  source_file = each.value
   output_path = "${path.module}/archives/${each.key}.zip"
+}
+
+data "archive_file" "vehicles" {
+  type        = "zip"
+  source_dir  = "${path.module}/../../../lambdas/vehicles"
+  excludes    = ["test_index.py", "requirements.txt"]
+  output_path = "${path.module}/archives/vehicles.zip"
+}
+
+locals {
+  _archives = merge(
+    { for k, v in data.archive_file.single_file_functions : k => v },
+    { vehicles = data.archive_file.vehicles }
+  )
 }
 
 resource "aws_lambda_function" "functions" {
@@ -47,8 +63,8 @@ resource "aws_lambda_function" "functions" {
   timeout       = each.value.timeout
   memory_size   = each.value.memory
 
-  filename         = data.archive_file.functions[each.key].output_path
-  source_code_hash = data.archive_file.functions[each.key].output_base64sha256
+  filename         = local._archives[each.key].output_path
+  source_code_hash = local._archives[each.key].output_base64sha256
 
   vpc_config {
     subnet_ids         = var.private_subnet_ids
@@ -60,6 +76,8 @@ resource "aws_lambda_function" "functions" {
       DB_ENDPOINT          = var.db_endpoint
       DB_NAME              = var.db_name
       DB_PORT              = "5432"
+      DB_USERNAME          = var.db_username
+      DB_PASSWORD          = var.db_password
       SQS_QUEUE_URL        = var.sqs_queue_url
       STEP_FUNCTION_ARN    = var.step_function_arn
       COGNITO_USER_POOL_ID = var.cognito_user_pool_id

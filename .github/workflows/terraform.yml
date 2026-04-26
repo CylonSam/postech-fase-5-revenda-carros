@@ -104,6 +104,14 @@ jobs:
             -backend-config="key=${{ secrets.TF_BACKEND_KEY }}" \
             -backend-config="region=${{ secrets.TF_BACKEND_REGION }}"
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pg8000 for vehicles lambda
+        run: pip install pg8000 -t ../lambdas/vehicles/ --quiet
+
       - name: Terraform Plan
         id: plan
         run: |

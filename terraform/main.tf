@@ -48,6 +48,8 @@ module "lambda" {
   cognito_user_pool_id  = module.cognito.user_pool_id
   cognito_client_id     = module.cognito.client_id
   cognito_user_pool_arn = module.cognito.user_pool_arn
+  db_username           = var.db_username
+  db_password           = var.db_password
 }
 
 module "step_functions" {
