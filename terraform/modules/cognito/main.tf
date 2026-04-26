@@ -41,7 +41,7 @@ resource "aws_cognito_user_pool" "main" {
     name                = "tax_id"
     attribute_data_type = "String"
     mutable             = true
-    required            = true
+    required            = false
 
     string_attribute_constraints {
       min_length = 1
@@ -53,7 +53,7 @@ resource "aws_cognito_user_pool" "main" {
     name                = "document_id"
     attribute_data_type = "String"
     mutable             = true
-    required            = true
+    required            = false
 
     string_attribute_constraints {
       min_length = 1
