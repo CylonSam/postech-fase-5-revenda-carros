@@ -39,7 +39,22 @@ def reset():
 
 
 class TestRegister:
-    _valid_body = {"email": "alice@example.com", "password": "Test123!", "name": "Alice"}
+    _valid_body = {
+        "email": "alice@example.com",
+        "password": "Test123!",
+        "name": "Alice",
+        "taxId": "12345678901",
+        "documentId": "987654321",
+        "birthDate": "1990-01-15",
+        "address": "123 Main St",
+        "phone": "+5511999999999",
+        "driversLicenseId": "AB123456",
+        "category": "B",
+        "expirationDate": "2028-03-01",
+    }
+
+    def _without(self, *keys):
+        return {k: v for k, v in self._valid_body.items() if k not in keys}
 
     def test_success_returns_201_and_user_sub(self):
         _mock_cognito.sign_up.return_value = {"UserSub": "sub-abc-123"}
@@ -54,15 +69,35 @@ class TestRegister:
         )
 
     def test_missing_email_returns_400(self):
-        resp = auth.handler(_event("POST /auth/register", {"password": "Test123!", "name": "Alice"}), None)
+        resp = auth.handler(_event("POST /auth/register", self._without("email")), None)
         assert resp["statusCode"] == 400
 
     def test_missing_password_returns_400(self):
-        resp = auth.handler(_event("POST /auth/register", {"email": "alice@example.com", "name": "Alice"}), None)
+        resp = auth.handler(_event("POST /auth/register", self._without("password")), None)
         assert resp["statusCode"] == 400
 
     def test_missing_name_returns_400(self):
-        resp = auth.handler(_event("POST /auth/register", {"email": "alice@example.com", "password": "Test123!"}), None)
+        resp = auth.handler(_event("POST /auth/register", self._without("name")), None)
+        assert resp["statusCode"] == 400
+
+    def test_missing_tax_id_returns_400(self):
+        resp = auth.handler(_event("POST /auth/register", self._without("taxId")), None)
+        assert resp["statusCode"] == 400
+
+    def test_missing_document_id_returns_400(self):
+        resp = auth.handler(_event("POST /auth/register", self._without("documentId")), None)
+        assert resp["statusCode"] == 400
+
+    def test_missing_birth_date_returns_400(self):
+        resp = auth.handler(_event("POST /auth/register", self._without("birthDate")), None)
+        assert resp["statusCode"] == 400
+
+    def test_missing_address_returns_400(self):
+        resp = auth.handler(_event("POST /auth/register", self._without("address")), None)
+        assert resp["statusCode"] == 400
+
+    def test_missing_phone_returns_400(self):
+        resp = auth.handler(_event("POST /auth/register", self._without("phone")), None)
         assert resp["statusCode"] == 400
 
     def test_duplicate_email_returns_409(self):
