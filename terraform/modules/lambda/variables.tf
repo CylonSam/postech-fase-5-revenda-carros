@@ -59,3 +59,15 @@ variable "cognito_user_pool_arn" {
   description = "Cognito User Pool ARN (used to scope IAM permissions)"
   type        = string
 }
+
+variable "db_username" {
+  description = "Database username"
+  type        = string
+  sensitive   = true
+}
+
+variable "db_password" {
+  description = "Database password"
+  type        = string
+  sensitive   = true
+}

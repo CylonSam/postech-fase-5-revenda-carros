@@ -23,3 +23,11 @@ lambda_placeholders/*.zip
 terraform/modules/lambda/archives/
 
 trust-policy.json
+
+# pg8000 and its dependencies installed into vehicles lambda directory by CI
+lambdas/vehicles/pg8000/
+lambdas/vehicles/pg8000*.dist-info/
+lambdas/vehicles/scramp/
+lambdas/vehicles/scramp*.dist-info/
+lambdas/vehicles/asn1crypto/
+lambdas/vehicles/asn1crypto*.dist-info/
