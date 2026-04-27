@@ -39,7 +39,15 @@ _WRITE_ROLES = {"admin", "operator"}
 
 def _groups(event):
     raw = event["requestContext"]["authorizer"]["jwt"]["claims"].get("cognito:groups", "")
-    return set(raw.replace(",", " ").split()) if raw else set()
+    if not raw:
+        return set()
+    # API Gateway may encode array claims as a JSON array string or as space/comma-separated
+    if raw.startswith("["):
+        try:
+            return set(json.loads(raw))
+        except (ValueError, TypeError):
+            pass
+    return set(raw.replace(",", " ").split())
 
 
 def _response(status_code, body):
