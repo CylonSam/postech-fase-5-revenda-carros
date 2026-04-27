@@ -109,6 +109,12 @@ resource "aws_cognito_user_pool" "main" {
   }
 }
 
+resource "aws_cognito_user_group" "groups" {
+  for_each     = toset(["admin", "operator", "client"])
+  user_pool_id = aws_cognito_user_pool.main.id
+  name         = each.key
+}
+
 resource "aws_cognito_user_pool_client" "main" {
   name         = "${var.name_prefix}-client"
   user_pool_id = aws_cognito_user_pool.main.id

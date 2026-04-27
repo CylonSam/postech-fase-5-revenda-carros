@@ -31,6 +31,8 @@ def _event(route, body=None):
 @pytest.fixture(autouse=True)
 def reset():
     _mock_cognito.reset_mock()
+    _mock_cognito.sign_up.side_effect = None
+    _mock_cognito.admin_add_user_to_group.side_effect = None
 
 
 # ---------------------------------------------------------------------------
@@ -67,6 +69,21 @@ class TestRegister:
         _mock_cognito.admin_confirm_sign_up.assert_called_once_with(
             UserPoolId="us-east-1_testpool", Username="alice@example.com"
         )
+        _mock_cognito.admin_add_user_to_group.assert_called_once_with(
+            UserPoolId="us-east-1_testpool",
+            Username="alice@example.com",
+            GroupName="client",
+        )
+
+    def test_group_assignment_failure_returns_500(self):
+        _mock_cognito.sign_up.return_value = {"UserSub": "sub-abc-123"}
+        _mock_cognito.admin_add_user_to_group.side_effect = _client_error(
+            "InternalErrorException"
+        )
+
+        resp = auth.handler(_event("POST /auth/register", self._valid_body), None)
+
+        assert resp["statusCode"] == 500
 
     def test_missing_email_returns_400(self):
         resp = auth.handler(_event("POST /auth/register", self._without("email")), None)

@@ -82,6 +82,10 @@ def _register(body):
         )
         # Auto-confirm so callers can log in immediately without email verification
         cognito.admin_confirm_sign_up(UserPoolId=USER_POOL_ID, Username=email)
+        # All self-registered users start as clients; admins/operators are promoted manually
+        cognito.admin_add_user_to_group(
+            UserPoolId=USER_POOL_ID, Username=email, GroupName="client"
+        )
         return _response(201, {"message": "User registered", "user_sub": result["UserSub"]})
     except ClientError as exc:
         return _error(exc)
