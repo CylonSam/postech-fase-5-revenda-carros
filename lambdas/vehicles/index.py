@@ -25,7 +25,7 @@ _conn.run(
         model      VARCHAR(100) NOT NULL,
         year       INTEGER NOT NULL,
         color      VARCHAR(50) NOT NULL,
-        price      NUMERIC(12,2) NOT NULL,
+        price      INTEGER NOT NULL,
         plate      VARCHAR(20) NOT NULL UNIQUE,
         created_at TIMESTAMP DEFAULT NOW()
     )
@@ -61,7 +61,7 @@ def _row_to_dict(cols, row):
         "model": d["model"],
         "year": int(d["year"]),
         "color": d["color"],
-        "price": float(d["price"]),
+        "price": int(d["price"]),
         "plate": d["plate"],
     }
 
@@ -75,9 +75,9 @@ def _validate_body(body):
     except (ValueError, TypeError):
         return None, "year must be an integer"
     try:
-        price = float(body["price"])
+        price = int(body["price"])
     except (ValueError, TypeError):
-        return None, "price must be a number"
+        return None, "price must be an integer"
     if not str(body["plate"]).strip():
         return None, "plate is required"
     return {

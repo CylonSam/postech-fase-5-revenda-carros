@@ -30,14 +30,14 @@ _COLS = [
     {"name": "price"},
     {"name": "plate"},
 ]
-_VEHICLE_ROW = [_VEHICLE_ID, "Toyota", "Corolla", 2022, "Blue", 25000.00, "ABC-1234"]
+_VEHICLE_ROW = [_VEHICLE_ID, "Toyota", "Corolla", 2022, "Blue", 2500000, "ABC-1234"]
 _VEHICLE_DICT = {
     "id": _VEHICLE_ID,
     "brand": "Toyota",
     "model": "Corolla",
     "year": 2022,
     "color": "Blue",
-    "price": 25000.0,
+    "price": 2500000,
     "plate": "ABC-1234",
 }
 _VALID_BODY = {
@@ -45,7 +45,7 @@ _VALID_BODY = {
     "model": "Corolla",
     "year": 2022,
     "color": "Blue",
-    "price": 25000.00,
+    "price": 2500000,
     "plate": "ABC-1234",
 }
 
