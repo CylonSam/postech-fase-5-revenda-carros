@@ -41,13 +41,8 @@ def _groups(event):
     raw = event["requestContext"]["authorizer"]["jwt"]["claims"].get("cognito:groups", "")
     if not raw:
         return set()
-    # API Gateway may encode array claims as a JSON array string or as space/comma-separated
-    if raw.startswith("["):
-        try:
-            return set(json.loads(raw))
-        except (ValueError, TypeError):
-            pass
-    return set(raw.replace(",", " ").split())
+    # API Gateway encodes Cognito group arrays as "[group1 group2]" (brackets, space-separated)
+    return set(raw.strip("[]").split())
 
 
 def _response(status_code, body):
@@ -119,15 +114,8 @@ def _get_vehicle(event):
 
 
 def _create_vehicle(event):
-    groups = _groups(event)
-    if not (groups & _WRITE_ROLES):
-        claims = event.get("requestContext", {}).get("authorizer", {}).get("jwt", {}).get("claims", {})
-        return _response(403, {
-            "error": "Insufficient permissions",
-            "_debug_groups_parsed": list(groups),
-            "_debug_groups_raw": claims.get("cognito:groups"),
-            "_debug_claims_keys": list(claims.keys()),
-        })
+    if not (_groups(event) & _WRITE_ROLES):
+        return _response(403, {"error": "Insufficient permissions"})
     body = json.loads(event.get("body") or "{}")
     data, err = _validate_body(body)
     if err:

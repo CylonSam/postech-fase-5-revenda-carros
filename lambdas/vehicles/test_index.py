@@ -59,7 +59,7 @@ def _event(route, path_id=None, body=None, groups=None):
     if groups is not None:
         event["requestContext"] = {
             "authorizer": {
-                "jwt": {"claims": {"cognito:groups": " ".join(groups)}}
+                "jwt": {"claims": {"cognito:groups": f"[{' '.join(groups)}]"}}
             }
         }
     return event
