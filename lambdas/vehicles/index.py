@@ -119,8 +119,15 @@ def _get_vehicle(event):
 
 
 def _create_vehicle(event):
-    if not (_groups(event) & _WRITE_ROLES):
-        return _response(403, {"error": "Insufficient permissions"})
+    groups = _groups(event)
+    if not (groups & _WRITE_ROLES):
+        claims = event.get("requestContext", {}).get("authorizer", {}).get("jwt", {}).get("claims", {})
+        return _response(403, {
+            "error": "Insufficient permissions",
+            "_debug_groups_parsed": list(groups),
+            "_debug_groups_raw": claims.get("cognito:groups"),
+            "_debug_claims_keys": list(claims.keys()),
+        })
     body = json.loads(event.get("body") or "{}")
     data, err = _validate_body(body)
     if err:
