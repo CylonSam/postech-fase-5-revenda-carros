@@ -25,9 +25,8 @@ locals {
   }
 
   _single_file_sources = {
-    auth   = "${path.module}/../../../lambdas/auth/index.py"
-    user   = "${path.module}/../../../lambdas/user/index.py"
-    orders = local._placeholder
+    auth = "${path.module}/../../../lambdas/auth/index.py"
+    user = "${path.module}/../../../lambdas/user/index.py"
   }
 }
 
@@ -52,12 +51,20 @@ data "archive_file" "stock" {
   output_path = "${path.module}/archives/stock.zip"
 }
 
+data "archive_file" "orders" {
+  type        = "zip"
+  source_dir  = "${path.module}/../../../lambdas/orders"
+  excludes    = ["test_index.py"]
+  output_path = "${path.module}/archives/orders.zip"
+}
+
 locals {
   _archives = merge(
     { for k, v in data.archive_file.single_file_functions : k => v },
     {
       vehicles = data.archive_file.vehicles
       stock    = data.archive_file.stock
+      orders   = data.archive_file.orders
     }
   )
 }
