@@ -24,12 +24,18 @@ terraform/modules/lambda/archives/
 
 trust-policy.json
 
-# pg8000 and its dependencies installed into vehicles lambda directory by CI
+# pg8000 and its dependencies installed into lambda directories by CI
 lambdas/vehicles/pg8000/
 lambdas/vehicles/pg8000*.dist-info/
 lambdas/vehicles/scramp/
 lambdas/vehicles/scramp*.dist-info/
 lambdas/vehicles/asn1crypto/
 lambdas/vehicles/asn1crypto*.dist-info/
+lambdas/stock/pg8000/
+lambdas/stock/pg8000*.dist-info/
+lambdas/stock/scramp/
+lambdas/stock/scramp*.dist-info/
+lambdas/stock/asn1crypto/
+lambdas/stock/asn1crypto*.dist-info/
 
 CLAUDE.md
