@@ -115,6 +115,9 @@ jobs:
       - name: Install pg8000 for stock lambda
         run: pip install pg8000 -t ../lambdas/stock/ --quiet
 
+      - name: Install pg8000 for orders lambda
+        run: pip install pg8000 -t ../lambdas/orders/ --quiet
+
       - name: Terraform Plan
         id: plan
         run: |
