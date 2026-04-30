@@ -92,6 +92,8 @@ locals {
     ["POST", "/orders", "orders", true],
     ["GET", "/orders", "orders", true],
     ["GET", "/orders/{id}", "orders", true],
+    ["GET", "/orders/{id}/payment", "orders", true],
+    ["POST", "/payments/webhook", "orders", false],
     ["GET", "/stock", "stock", false],
     ["PUT", "/stock/{vehicleId}", "stock", true],
   ]
