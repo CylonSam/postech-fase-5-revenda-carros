@@ -37,5 +37,11 @@ lambdas/stock/scramp/
 lambdas/stock/scramp*.dist-info/
 lambdas/stock/asn1crypto/
 lambdas/stock/asn1crypto*.dist-info/
+lambdas/orders/pg8000/
+lambdas/orders/pg8000*.dist-info/
+lambdas/orders/scramp/
+lambdas/orders/scramp*.dist-info/
+lambdas/orders/asn1crypto/
+lambdas/orders/asn1crypto*.dist-info/
 
 CLAUDE.md
