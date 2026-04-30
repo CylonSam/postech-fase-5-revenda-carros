@@ -37,6 +37,19 @@ _conn.run(
     """
 )
 
+_conn.run(
+    """
+    CREATE TABLE IF NOT EXISTS payments (
+        id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        payment_code UUID NOT NULL UNIQUE,
+        order_id     UUID NOT NULL,
+        task_token   TEXT NOT NULL,
+        status       VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'success')),
+        created_at   TIMESTAMP DEFAULT NOW()
+    )
+    """
+)
+
 _ADMIN_ROLES = {"admin", "operator"}
 _SELECT = "SELECT id, customer_id, vehicle_id, status, amount, created_at FROM orders"
 
@@ -137,6 +150,20 @@ def _get_order(event):
     return _response(200, order)
 
 
+def _get_order_payment(event):
+    order_id = (event.get("pathParameters") or {}).get("id", "")
+    rows = _conn.run(
+        "SELECT payment_code, status FROM payments "
+        "WHERE order_id = :order_id::UUID ORDER BY created_at DESC LIMIT 1",
+        order_id=order_id,
+    )
+    cols = [c["name"] for c in _conn.columns]
+    if not rows:
+        return _response(404, {"error": "No payment found for this order"})
+    p = dict(zip(cols, rows[0]))
+    return _response(200, {"paymentCode": str(p["payment_code"]), "status": p["status"]})
+
+
 def _validate_order(event):
     order = event.get("order", {})
     order_id = order.get("id", "")
@@ -174,11 +201,44 @@ def _refund_payment(event):
 def _handle_sqs(event):
     for record in event["Records"]:
         body = json.loads(record["body"])
-        task_token = body["taskToken"]
-        _sf_client.send_task_success(
-            taskToken=task_token,
-            output=json.dumps({"paymentId": str(uuid.uuid4()), "status": "success"}),
+        payment_code = str(uuid.uuid4())
+        _conn.run(
+            "INSERT INTO payments (payment_code, order_id, task_token) "
+            "VALUES (:payment_code::UUID, :order_id::UUID, :task_token)",
+            payment_code=payment_code,
+            order_id=body["orderId"],
+            task_token=body["taskToken"],
         )
+
+
+def _confirm_payment(event):
+    body = json.loads(event.get("body") or "{}")
+    payment_code = body.get("paymentCode", "")
+    if not payment_code:
+        return _response(400, {"error": "paymentCode is required"})
+
+    rows = _conn.run(
+        "SELECT id, task_token, order_id, status FROM payments WHERE payment_code = :code::UUID",
+        code=payment_code,
+    )
+    cols = [c["name"] for c in _conn.columns]
+    if not rows:
+        return _response(404, {"error": "Payment not found"})
+
+    payment = dict(zip(cols, rows[0]))
+    if payment["status"] != "pending":
+        return _response(409, {"error": "Payment already processed"})
+
+    payment_id = str(uuid.uuid4())
+    _sf_client.send_task_success(
+        taskToken=payment["task_token"],
+        output=json.dumps({"paymentId": payment_id, "status": "success"}),
+    )
+    _conn.run(
+        "UPDATE payments SET status = 'success' WHERE payment_code = :code::UUID",
+        code=payment_code,
+    )
+    return _response(200, {"paymentId": payment_id, "orderId": str(payment["order_id"]), "status": "success"})
 
 
 def handler(event, context):
@@ -203,5 +263,9 @@ def handler(event, context):
         return _list_orders(event)
     if route == "GET /orders/{id}":
         return _get_order(event)
+    if route == "GET /orders/{id}/payment":
+        return _get_order_payment(event)
+    if route == "POST /payments/webhook":
+        return _confirm_payment(event)
 
     return _response(404, {"error": "Route not found"})

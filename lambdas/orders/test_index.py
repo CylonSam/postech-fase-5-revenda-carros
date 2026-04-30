@@ -27,9 +27,12 @@ with patch("pg8000.native.Connection", return_value=_mock_conn), \
 _ORDER_ID = "00000000-0000-0000-0000-000000000001"
 _CUSTOMER_ID = "00000000-0000-0000-0000-000000000002"
 _VEHICLE_ID = "00000000-0000-0000-0000-000000000003"
+_PAYMENT_ID = "00000000-0000-0000-0000-000000000004"
+_PAYMENT_CODE = "00000000-0000-0000-0000-000000000005"
+_TASK_TOKEN = "some-long-task-token"
 _CREATED_AT = datetime(2024, 1, 1, 12, 0, 0)
 
-_COLS = [
+_ORDER_COLS = [
     {"name": "id"},
     {"name": "customer_id"},
     {"name": "vehicle_id"},
@@ -47,6 +50,19 @@ _ORDER_DICT = {
     "amount": 5000.0,
     "createdAt": _CREATED_AT.isoformat(),
 }
+
+_PAYMENT_COLS = [
+    {"name": "id"},
+    {"name": "task_token"},
+    {"name": "order_id"},
+    {"name": "status"},
+]
+_PAYMENT_ROW = [_PAYMENT_ID, _TASK_TOKEN, _ORDER_ID, "pending"]
+
+_PAYMENT_LOOKUP_COLS = [
+    {"name": "payment_code"},
+    {"name": "status"},
+]
 
 
 def _event(route, path_id=None, body=None, sub=_CUSTOMER_ID, groups=None):
@@ -81,7 +97,7 @@ def reset():
 class TestCreateOrder:
     def test_returns_201_on_success(self):
         _mock_conn.run.return_value = [_ORDER_ROW]
-        _mock_conn.columns = _COLS
+        _mock_conn.columns = _ORDER_COLS
 
         resp = orders.handler(
             _event("POST /orders", body={"vehicleId": _VEHICLE_ID, "amount": 5000.0}),
@@ -93,7 +109,7 @@ class TestCreateOrder:
 
     def test_starts_step_function_with_correct_input(self):
         _mock_conn.run.return_value = [_ORDER_ROW]
-        _mock_conn.columns = _COLS
+        _mock_conn.columns = _ORDER_COLS
 
         orders.handler(
             _event("POST /orders", body={"vehicleId": _VEHICLE_ID, "amount": 5000.0}),
@@ -148,7 +164,7 @@ class TestCreateOrder:
 class TestListOrders:
     def test_returns_200_with_client_orders(self):
         _mock_conn.run.return_value = [_ORDER_ROW]
-        _mock_conn.columns = _COLS
+        _mock_conn.columns = _ORDER_COLS
 
         resp = orders.handler(_event("GET /orders"), None)
 
@@ -159,7 +175,7 @@ class TestListOrders:
 
     def test_client_query_filters_by_customer_id(self):
         _mock_conn.run.return_value = []
-        _mock_conn.columns = _COLS
+        _mock_conn.columns = _ORDER_COLS
 
         orders.handler(_event("GET /orders"), None)
 
@@ -168,7 +184,7 @@ class TestListOrders:
 
     def test_admin_sees_all_orders_without_filter(self):
         _mock_conn.run.return_value = [_ORDER_ROW]
-        _mock_conn.columns = _COLS
+        _mock_conn.columns = _ORDER_COLS
 
         resp = orders.handler(_event("GET /orders", groups=["admin"]), None)
 
@@ -178,7 +194,7 @@ class TestListOrders:
 
     def test_operator_sees_all_orders_without_filter(self):
         _mock_conn.run.return_value = [_ORDER_ROW]
-        _mock_conn.columns = _COLS
+        _mock_conn.columns = _ORDER_COLS
 
         orders.handler(_event("GET /orders", groups=["operator"]), None)
 
@@ -187,7 +203,7 @@ class TestListOrders:
 
     def test_returns_empty_list(self):
         _mock_conn.run.return_value = []
-        _mock_conn.columns = _COLS
+        _mock_conn.columns = _ORDER_COLS
 
         resp = orders.handler(_event("GET /orders"), None)
 
@@ -198,7 +214,7 @@ class TestListOrders:
 class TestGetOrder:
     def test_returns_200_for_owner(self):
         _mock_conn.run.return_value = [_ORDER_ROW]
-        _mock_conn.columns = _COLS
+        _mock_conn.columns = _ORDER_COLS
 
         resp = orders.handler(_event("GET /orders/{id}", path_id=_ORDER_ID), None)
 
@@ -207,7 +223,7 @@ class TestGetOrder:
 
     def test_returns_403_for_different_user(self):
         _mock_conn.run.return_value = [_ORDER_ROW]
-        _mock_conn.columns = _COLS
+        _mock_conn.columns = _ORDER_COLS
 
         resp = orders.handler(
             _event("GET /orders/{id}", path_id=_ORDER_ID, sub="other-user-id"),
@@ -218,7 +234,7 @@ class TestGetOrder:
 
     def test_admin_can_access_any_order(self):
         _mock_conn.run.return_value = [_ORDER_ROW]
-        _mock_conn.columns = _COLS
+        _mock_conn.columns = _ORDER_COLS
 
         resp = orders.handler(
             _event("GET /orders/{id}", path_id=_ORDER_ID, sub="other-user-id", groups=["admin"]),
@@ -229,7 +245,7 @@ class TestGetOrder:
 
     def test_operator_can_access_any_order(self):
         _mock_conn.run.return_value = [_ORDER_ROW]
-        _mock_conn.columns = _COLS
+        _mock_conn.columns = _ORDER_COLS
 
         resp = orders.handler(
             _event("GET /orders/{id}", path_id=_ORDER_ID, sub="other-user-id", groups=["operator"]),
@@ -240,11 +256,41 @@ class TestGetOrder:
 
     def test_returns_404_when_not_found(self):
         _mock_conn.run.return_value = []
-        _mock_conn.columns = _COLS
+        _mock_conn.columns = _ORDER_COLS
 
         resp = orders.handler(_event("GET /orders/{id}", path_id=_ORDER_ID), None)
 
         assert resp["statusCode"] == 404
+
+
+class TestGetPaymentByOrder:
+    def test_returns_200_with_payment_info(self):
+        _mock_conn.run.return_value = [[_PAYMENT_CODE, "pending"]]
+        _mock_conn.columns = _PAYMENT_LOOKUP_COLS
+
+        resp = orders.handler(_event("GET /orders/{id}/payment", path_id=_ORDER_ID), None)
+
+        assert resp["statusCode"] == 200
+        body = json.loads(resp["body"])
+        assert body["paymentCode"] == _PAYMENT_CODE
+        assert body["status"] == "pending"
+
+    def test_returns_404_when_no_payment(self):
+        _mock_conn.run.return_value = []
+        _mock_conn.columns = _PAYMENT_LOOKUP_COLS
+
+        resp = orders.handler(_event("GET /orders/{id}/payment", path_id=_ORDER_ID), None)
+
+        assert resp["statusCode"] == 404
+
+    def test_passes_order_id_to_query(self):
+        _mock_conn.run.return_value = [[_PAYMENT_CODE, "pending"]]
+        _mock_conn.columns = _PAYMENT_LOOKUP_COLS
+
+        orders.handler(_event("GET /orders/{id}/payment", path_id=_ORDER_ID), None)
+
+        call_kwargs = _mock_conn.run.call_args.kwargs
+        assert call_kwargs.get("order_id") == _ORDER_ID
 
 
 class TestValidateOrder:
@@ -261,7 +307,7 @@ class TestValidateOrder:
 
     def test_returns_order_dict_when_found(self):
         _mock_conn.run.return_value = [_ORDER_ROW]
-        _mock_conn.columns = _COLS
+        _mock_conn.columns = _ORDER_COLS
 
         result = orders.handler(self._sf_event(), None)
 
@@ -270,14 +316,14 @@ class TestValidateOrder:
 
     def test_raises_when_not_found(self):
         _mock_conn.run.return_value = []
-        _mock_conn.columns = _COLS
+        _mock_conn.columns = _ORDER_COLS
 
         with pytest.raises(ValueError):
             orders.handler(self._sf_event(), None)
 
     def test_passes_order_id_to_query(self):
         _mock_conn.run.return_value = [_ORDER_ROW]
-        _mock_conn.columns = _COLS
+        _mock_conn.columns = _ORDER_COLS
 
         orders.handler(self._sf_event(), None)
 
@@ -295,7 +341,7 @@ class TestConfirmOrder:
 
     def test_returns_confirmed_order(self):
         _mock_conn.run.return_value = [_CONFIRMED_ROW]
-        _mock_conn.columns = _COLS
+        _mock_conn.columns = _ORDER_COLS
 
         result = orders.handler(self._sf_event(), None)
 
@@ -304,14 +350,14 @@ class TestConfirmOrder:
 
     def test_raises_when_not_found(self):
         _mock_conn.run.return_value = []
-        _mock_conn.columns = _COLS
+        _mock_conn.columns = _ORDER_COLS
 
         with pytest.raises(ValueError):
             orders.handler(self._sf_event(), None)
 
     def test_passes_order_id_to_query(self):
         _mock_conn.run.return_value = [_CONFIRMED_ROW]
-        _mock_conn.columns = _COLS
+        _mock_conn.columns = _ORDER_COLS
 
         orders.handler(self._sf_event(), None)
 
@@ -345,26 +391,25 @@ class TestRefundPayment:
 
 
 class TestSqsHandler:
-    def test_sends_task_success_with_task_token(self):
+    def test_inserts_payment_record_into_db(self):
         orders.handler(
-            _sqs_event({"taskToken": "token-123", "orderId": _ORDER_ID, "amount": 5000.0, "customerId": _CUSTOMER_ID}),
+            _sqs_event({"taskToken": _TASK_TOKEN, "orderId": _ORDER_ID, "amount": 5000.0, "customerId": _CUSTOMER_ID}),
             None,
         )
 
-        _mock_sf.send_task_success.assert_called_once()
-        call_kwargs = _mock_sf.send_task_success.call_args.kwargs
-        assert call_kwargs["taskToken"] == "token-123"
+        _mock_conn.run.assert_called()
+        call_kwargs = _mock_conn.run.call_args.kwargs
+        assert call_kwargs.get("order_id") == _ORDER_ID
+        assert call_kwargs.get("task_token") == _TASK_TOKEN
+        assert "payment_code" in call_kwargs
 
-    def test_payment_output_contains_payment_id_and_success_status(self):
+    def test_does_not_call_send_task_success(self):
         orders.handler(
-            _sqs_event({"taskToken": "token-123", "orderId": _ORDER_ID, "amount": 5000.0, "customerId": _CUSTOMER_ID}),
+            _sqs_event({"taskToken": _TASK_TOKEN, "orderId": _ORDER_ID, "amount": 5000.0, "customerId": _CUSTOMER_ID}),
             None,
         )
 
-        call_kwargs = _mock_sf.send_task_success.call_args.kwargs
-        output = json.loads(call_kwargs["output"])
-        assert output["status"] == "success"
-        assert "paymentId" in output
+        _mock_sf.send_task_success.assert_not_called()
 
     def test_handles_multiple_records(self):
         orders.handler(
@@ -375,9 +420,9 @@ class TestSqsHandler:
             None,
         )
 
-        assert _mock_sf.send_task_success.call_count == 2
+        assert _mock_conn.run.call_count == 2
 
-    def test_payment_id_is_unique_per_record(self):
+    def test_payment_codes_are_unique_per_record(self):
         orders.handler(
             _sqs_event(
                 {"taskToken": "token-1", "orderId": _ORDER_ID, "amount": 1000.0, "customerId": _CUSTOMER_ID},
@@ -386,9 +431,80 @@ class TestSqsHandler:
             None,
         )
 
-        calls = _mock_sf.send_task_success.call_args_list
-        payment_ids = [json.loads(c.kwargs["output"])["paymentId"] for c in calls]
-        assert payment_ids[0] != payment_ids[1]
+        calls = _mock_conn.run.call_args_list
+        codes = [c.kwargs["payment_code"] for c in calls]
+        assert codes[0] != codes[1]
+
+
+class TestConfirmPayment:
+    def _event(self, payment_code=_PAYMENT_CODE):
+        return {
+            "routeKey": "POST /payments/webhook",
+            "pathParameters": None,
+            "body": json.dumps({"paymentCode": payment_code}),
+            "requestContext": {"authorizer": {"jwt": {"claims": {}}}},
+        }
+
+    def test_returns_200_on_success(self):
+        _mock_conn.run.side_effect = [[_PAYMENT_ROW], []]
+        _mock_conn.columns = _PAYMENT_COLS
+
+        resp = orders.handler(self._event(), None)
+
+        assert resp["statusCode"] == 200
+        body = json.loads(resp["body"])
+        assert body["status"] == "success"
+        assert "paymentId" in body
+        assert body["orderId"] == _ORDER_ID
+
+    def test_calls_send_task_success_with_correct_token(self):
+        _mock_conn.run.side_effect = [[_PAYMENT_ROW], []]
+        _mock_conn.columns = _PAYMENT_COLS
+
+        orders.handler(self._event(), None)
+
+        _mock_sf.send_task_success.assert_called_once()
+        call_kwargs = _mock_sf.send_task_success.call_args.kwargs
+        assert call_kwargs["taskToken"] == _TASK_TOKEN
+        output = json.loads(call_kwargs["output"])
+        assert output["status"] == "success"
+        assert "paymentId" in output
+
+    def test_missing_payment_code_returns_400(self):
+        event = self._event()
+        event["body"] = json.dumps({})
+
+        resp = orders.handler(event, None)
+
+        assert resp["statusCode"] == 400
+        _mock_conn.run.assert_not_called()
+
+    def test_unknown_payment_code_returns_404(self):
+        _mock_conn.run.return_value = []
+        _mock_conn.columns = _PAYMENT_COLS
+
+        resp = orders.handler(self._event(), None)
+
+        assert resp["statusCode"] == 404
+
+    def test_already_processed_returns_409(self):
+        _mock_conn.run.return_value = [[_PAYMENT_ID, _TASK_TOKEN, _ORDER_ID, "success"]]
+        _mock_conn.columns = _PAYMENT_COLS
+
+        resp = orders.handler(self._event(), None)
+
+        assert resp["statusCode"] == 409
+        _mock_sf.send_task_success.assert_not_called()
+
+    def test_updates_payment_status_after_success(self):
+        _mock_conn.run.side_effect = [[_PAYMENT_ROW], []]
+        _mock_conn.columns = _PAYMENT_COLS
+
+        orders.handler(self._event(), None)
+
+        assert _mock_conn.run.call_count == 2
+        update_kwargs = _mock_conn.run.call_args_list[1].kwargs
+        assert update_kwargs.get("code") == _PAYMENT_CODE
 
 
 def test_unknown_route_returns_404():
