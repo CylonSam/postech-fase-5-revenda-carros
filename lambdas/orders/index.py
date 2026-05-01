@@ -25,17 +25,28 @@ _sf_client = boto3.client("stepfunctions")
 _conn.run(
     """
     CREATE TABLE IF NOT EXISTS orders (
-        id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        customer_id UUID NOT NULL,
-        vehicle_id  UUID NOT NULL,
-        status      VARCHAR(20) NOT NULL DEFAULT 'pending'
-                        CHECK (status IN ('pending', 'confirmed', 'failed', 'refunded')),
-        amount      NUMERIC(12,2) NOT NULL,
-        created_at  TIMESTAMP DEFAULT NOW(),
-        updated_at  TIMESTAMP DEFAULT NOW()
+        id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        customer_id       UUID NOT NULL,
+        vehicle_id        UUID NOT NULL,
+        status            VARCHAR(20) NOT NULL DEFAULT 'pending'
+                              CHECK (status IN ('pending', 'confirmed', 'failed', 'refunded', 'delivered')),
+        amount            NUMERIC(12,2) NOT NULL,
+        retriever_license TEXT,
+        retriever_tax_id  TEXT,
+        created_at        TIMESTAMP DEFAULT NOW(),
+        updated_at        TIMESTAMP DEFAULT NOW()
     )
     """
 )
+
+# Migrate existing constraint and columns (idempotent)
+_conn.run("ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_status_check")
+_conn.run(
+    "ALTER TABLE orders ADD CONSTRAINT orders_status_check "
+    "CHECK (status IN ('pending', 'confirmed', 'failed', 'refunded', 'delivered'))"
+)
+_conn.run("ALTER TABLE orders ADD COLUMN IF NOT EXISTS retriever_license TEXT")
+_conn.run("ALTER TABLE orders ADD COLUMN IF NOT EXISTS retriever_tax_id  TEXT")
 
 _conn.run(
     """
@@ -50,8 +61,22 @@ _conn.run(
     """
 )
 
+_conn.run(
+    """
+    CREATE TABLE IF NOT EXISTS driver_licenses (
+        user_id        TEXT PRIMARY KEY,
+        license_number TEXT NOT NULL,
+        created_at     TIMESTAMP DEFAULT NOW(),
+        updated_at     TIMESTAMP DEFAULT NOW()
+    )
+    """
+)
+
 _ADMIN_ROLES = {"admin", "operator"}
-_SELECT = "SELECT id, customer_id, vehicle_id, status, amount, created_at FROM orders"
+_SELECT = (
+    "SELECT id, customer_id, vehicle_id, status, amount, "
+    "created_at, retriever_license, retriever_tax_id FROM orders"
+)
 
 
 def _groups(event):
@@ -78,6 +103,8 @@ def _row_to_dict(cols, row):
         "status": d["status"],
         "amount": float(d["amount"]),
         "createdAt": d["created_at"].isoformat() if d["created_at"] else None,
+        "retrieverLicense": d.get("retriever_license"),
+        "retrieverTaxId": d.get("retriever_tax_id"),
     }
 
 
@@ -99,7 +126,7 @@ def _create_order(event):
         rows = _conn.run(
             "INSERT INTO orders (customer_id, vehicle_id, amount) "
             "VALUES (:customer_id::UUID, :vehicle_id::UUID, :amount) "
-            "RETURNING id, customer_id, vehicle_id, status, amount, created_at",
+            "RETURNING id, customer_id, vehicle_id, status, amount, created_at, retriever_license, retriever_tax_id",
             customer_id=customer_id,
             vehicle_id=vehicle_id,
             amount=amount,
@@ -164,6 +191,88 @@ def _get_order_payment(event):
     return _response(200, {"paymentCode": str(p["payment_code"]), "status": p["status"]})
 
 
+def _set_retriever(event):
+    claims = event["requestContext"]["authorizer"]["jwt"]["claims"]
+    caller_id = claims.get("sub", "")
+    order_id = (event.get("pathParameters") or {}).get("id", "")
+    body = json.loads(event.get("body") or "{}")
+    license_number = body.get("licenseNumber", "").strip()
+    tax_id = body.get("taxId", "").strip()
+
+    if not license_number:
+        return _response(400, {"error": "licenseNumber is required"})
+    if not tax_id:
+        return _response(400, {"error": "taxId is required"})
+
+    rows = _conn.run(f"{_SELECT} WHERE id = :id::UUID", id=order_id)
+    cols = [c["name"] for c in _conn.columns]
+    if not rows:
+        return _response(404, {"error": "Order not found"})
+    order = _row_to_dict(cols, rows[0])
+    if order["customerId"] != caller_id and not (_groups(event) & _ADMIN_ROLES):
+        return _response(403, {"error": "Access denied"})
+    if order["status"] != "confirmed":
+        return _response(409, {"error": "Retriever can only be set on a confirmed order"})
+
+    updated = _conn.run(
+        "UPDATE orders "
+        "SET retriever_license = :retriever_license, retriever_tax_id = :retriever_tax_id, updated_at = NOW() "
+        "WHERE id = :id::UUID "
+        "RETURNING id, customer_id, vehicle_id, status, amount, created_at, retriever_license, retriever_tax_id",
+        retriever_license=license_number,
+        retriever_tax_id=tax_id,
+        id=order_id,
+    )
+    cols = [c["name"] for c in _conn.columns]
+    return _response(200, _row_to_dict(cols, updated[0]))
+
+
+def _pickup_order(event):
+    if not (_groups(event) & _ADMIN_ROLES):
+        return _response(403, {"error": "Insufficient permissions"})
+
+    order_id = (event.get("pathParameters") or {}).get("id", "")
+    rows = _conn.run(f"{_SELECT} WHERE id = :id::UUID", id=order_id)
+    cols = [c["name"] for c in _conn.columns]
+    if not rows:
+        return _response(404, {"error": "Order not found"})
+    order = _row_to_dict(cols, rows[0])
+    if order["status"] != "confirmed":
+        return _response(409, {"error": "Order must be confirmed before pickup"})
+    if not order.get("retrieverLicense"):
+        return _response(422, {"error": "No retriever designated for this order"})
+
+    updated = _conn.run(
+        "UPDATE orders SET status = 'delivered', updated_at = NOW() "
+        "WHERE id = :id::UUID "
+        "RETURNING id, customer_id, vehicle_id, status, amount, created_at, retriever_license, retriever_tax_id",
+        id=order_id,
+    )
+    cols = [c["name"] for c in _conn.columns]
+    return _response(200, _row_to_dict(cols, updated[0]))
+
+
+def _register_license(event):
+    claims = event["requestContext"]["authorizer"]["jwt"]["claims"]
+    caller_id = claims.get("sub", "")
+    path_id = (event.get("pathParameters") or {}).get("id", "")
+    if path_id != caller_id and not (_groups(event) & _ADMIN_ROLES):
+        return _response(403, {"error": "Access denied"})
+    body = json.loads(event.get("body") or "{}")
+    license_number = body.get("licenseNumber", "").strip()
+    if not license_number:
+        return _response(400, {"error": "licenseNumber is required"})
+    _conn.run(
+        "INSERT INTO driver_licenses (user_id, license_number, updated_at) "
+        "VALUES (:user_id, :license_number, NOW()) "
+        "ON CONFLICT (user_id) DO UPDATE "
+        "SET license_number = EXCLUDED.license_number, updated_at = NOW()",
+        user_id=path_id,
+        license_number=license_number,
+    )
+    return _response(200, {"userId": path_id, "licenseNumber": license_number})
+
+
 def _validate_order(event):
     order = event.get("order", {})
     order_id = order.get("id", "")
@@ -179,13 +288,19 @@ def _confirm_order(event):
     rows = _conn.run(
         "UPDATE orders SET status = 'confirmed', updated_at = NOW() "
         "WHERE id = :id::UUID "
-        "RETURNING id, customer_id, vehicle_id, status, amount, created_at",
+        "RETURNING id, customer_id, vehicle_id, status, amount, created_at, retriever_license, retriever_tax_id",
         id=order_id,
     )
     cols = [c["name"] for c in _conn.columns]
     if not rows:
         raise ValueError(f"Order {order_id} not found")
-    return _row_to_dict(cols, rows[0])
+    result = _row_to_dict(cols, rows[0])
+    _conn.run(
+        "UPDATE stock SET status = 'sold', updated_at = NOW() "
+        "WHERE order_id = :order_id::UUID",
+        order_id=order_id,
+    )
+    return result
 
 
 def _refund_payment(event):
@@ -265,6 +380,12 @@ def handler(event, context):
         return _get_order(event)
     if route == "GET /orders/{id}/payment":
         return _get_order_payment(event)
+    if route == "PUT /orders/{id}/retriever":
+        return _set_retriever(event)
+    if route == "POST /orders/{id}/pickup":
+        return _pickup_order(event)
+    if route == "PUT /users/{id}/license":
+        return _register_license(event)
     if route == "POST /payments/webhook":
         return _confirm_payment(event)
 

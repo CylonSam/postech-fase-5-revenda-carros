@@ -86,6 +86,7 @@ locals {
     ["GET", "/users/{id}", "user", true],
     ["PUT", "/users/{id}", "user", true],
     ["GET", "/vehicles", "vehicles", false],
+    ["GET", "/vehicles/sold", "vehicles", false],
     ["GET", "/vehicles/{id}", "vehicles", false],
     ["POST", "/vehicles", "vehicles", true],
     ["PUT", "/vehicles/{id}", "vehicles", true],
@@ -93,9 +94,13 @@ locals {
     ["GET", "/orders", "orders", true],
     ["GET", "/orders/{id}", "orders", true],
     ["GET", "/orders/{id}/payment", "orders", true],
+    ["PUT", "/orders/{id}/retriever", "orders", true],
+    ["POST", "/orders/{id}/pickup", "orders", true],
+    ["PUT", "/users/{id}/license", "orders", true],
     ["POST", "/payments/webhook", "orders", false],
     ["GET", "/stock", "stock", false],
     ["PUT", "/stock/{vehicleId}", "stock", true],
+    ["GET", "/docs/{orderId}", "docs", true],
   ]
 
   routes_map = {
