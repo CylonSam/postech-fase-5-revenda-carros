@@ -99,7 +99,25 @@ def _is_unique_violation(exc):
 
 
 def _list_vehicles(event):
-    rows = _conn.run(f"{_SELECT} ORDER BY created_at DESC")
+    rows = _conn.run(
+        "SELECT v.id, v.brand, v.model, v.year, v.color, v.price, v.plate "
+        "FROM vehicles v "
+        "LEFT JOIN stock s ON s.vehicle_id = v.id "
+        "WHERE s.status = 'available' OR s.status IS NULL "
+        "ORDER BY v.price ASC"
+    )
+    cols = [c["name"] for c in _conn.columns]
+    return _response(200, [_row_to_dict(cols, row) for row in rows])
+
+
+def _list_sold_vehicles(event):
+    rows = _conn.run(
+        "SELECT v.id, v.brand, v.model, v.year, v.color, v.price, v.plate "
+        "FROM vehicles v "
+        "JOIN stock s ON s.vehicle_id = v.id "
+        "WHERE s.status = 'sold' "
+        "ORDER BY v.price ASC"
+    )
     cols = [c["name"] for c in _conn.columns]
     return _response(200, [_row_to_dict(cols, row) for row in rows])
 
@@ -167,6 +185,8 @@ def handler(event, context):
 
     if route == "GET /vehicles":
         return _list_vehicles(event)
+    if route == "GET /vehicles/sold":
+        return _list_sold_vehicles(event)
     if route == "GET /vehicles/{id}":
         return _get_vehicle(event)
     if route == "POST /vehicles":

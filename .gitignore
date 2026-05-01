@@ -43,5 +43,11 @@ lambdas/orders/scramp/
 lambdas/orders/scramp*.dist-info/
 lambdas/orders/asn1crypto/
 lambdas/orders/asn1crypto*.dist-info/
+lambdas/docs/pg8000/
+lambdas/docs/pg8000*.dist-info/
+lambdas/docs/scramp/
+lambdas/docs/scramp*.dist-info/
+lambdas/docs/asn1crypto/
+lambdas/docs/asn1crypto*.dist-info/
 
 CLAUDE.md

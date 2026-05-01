@@ -22,6 +22,10 @@ locals {
       timeout = 60
       memory  = 256
     }
+    docs = {
+      timeout = 30
+      memory  = 128
+    }
   }
 
   _single_file_sources = {
@@ -58,6 +62,13 @@ data "archive_file" "orders" {
   output_path = "${path.module}/archives/orders.zip"
 }
 
+data "archive_file" "docs" {
+  type        = "zip"
+  source_dir  = "${path.module}/../../../lambdas/docs"
+  excludes    = ["test_index.py"]
+  output_path = "${path.module}/archives/docs.zip"
+}
+
 locals {
   _archives = merge(
     { for k, v in data.archive_file.single_file_functions : k => v },
@@ -65,6 +76,7 @@ locals {
       vehicles = data.archive_file.vehicles
       stock    = data.archive_file.stock
       orders   = data.archive_file.orders
+      docs     = data.archive_file.docs
     }
   )
 }

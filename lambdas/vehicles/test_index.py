@@ -93,6 +93,39 @@ class TestListVehicles:
         assert body == [_VEHICLE_DICT]
 
 
+class TestListSoldVehicles:
+    def test_returns_200_with_empty_list(self):
+        _mock_conn.run.return_value = []
+        _mock_conn.columns = _COLS
+
+        resp = vehicles.handler(_event("GET /vehicles/sold"), None)
+
+        assert resp["statusCode"] == 200
+        assert json.loads(resp["body"]) == []
+
+    def test_returns_200_with_sold_vehicles(self):
+        _mock_conn.run.return_value = [_VEHICLE_ROW]
+        _mock_conn.columns = _COLS
+
+        resp = vehicles.handler(_event("GET /vehicles/sold"), None)
+
+        assert resp["statusCode"] == 200
+        body = json.loads(resp["body"])
+        assert body == [_VEHICLE_DICT]
+
+    def test_returns_list_ordered_by_price(self):
+        cheap = [_VEHICLE_ID, "Toyota", "Corolla", 2022, "Blue", 1000000, "AAA-0001"]
+        expensive = [_VEHICLE_ID, "BMW", "X5", 2023, "Black", 5000000, "BBB-0002"]
+        _mock_conn.run.return_value = [cheap, expensive]
+        _mock_conn.columns = _COLS
+
+        resp = vehicles.handler(_event("GET /vehicles/sold"), None)
+
+        body = json.loads(resp["body"])
+        assert body[0]["price"] == 1000000
+        assert body[1]["price"] == 5000000
+
+
 class TestGetVehicle:
     def test_returns_200_when_found(self):
         _mock_conn.run.return_value = [_VEHICLE_ROW]

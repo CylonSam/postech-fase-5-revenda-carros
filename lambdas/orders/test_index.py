@@ -30,6 +30,8 @@ _VEHICLE_ID = "00000000-0000-0000-0000-000000000003"
 _PAYMENT_ID = "00000000-0000-0000-0000-000000000004"
 _PAYMENT_CODE = "00000000-0000-0000-0000-000000000005"
 _TASK_TOKEN = "some-long-task-token"
+_LICENSE_NUMBER = "CNH-123456"
+_TAX_ID = "123.456.789-00"
 _CREATED_AT = datetime(2024, 1, 1, 12, 0, 0)
 
 _ORDER_COLS = [
@@ -39,9 +41,13 @@ _ORDER_COLS = [
     {"name": "status"},
     {"name": "amount"},
     {"name": "created_at"},
+    {"name": "retriever_license"},
+    {"name": "retriever_tax_id"},
 ]
-_ORDER_ROW = [_ORDER_ID, _CUSTOMER_ID, _VEHICLE_ID, "pending", 5000.00, _CREATED_AT]
-_CONFIRMED_ROW = [_ORDER_ID, _CUSTOMER_ID, _VEHICLE_ID, "confirmed", 5000.00, _CREATED_AT]
+_ORDER_ROW = [_ORDER_ID, _CUSTOMER_ID, _VEHICLE_ID, "pending", 5000.00, _CREATED_AT, None, None]
+_CONFIRMED_ROW = [_ORDER_ID, _CUSTOMER_ID, _VEHICLE_ID, "confirmed", 5000.00, _CREATED_AT, None, None]
+_RETRIEVER_SET_ROW = [_ORDER_ID, _CUSTOMER_ID, _VEHICLE_ID, "confirmed", 5000.00, _CREATED_AT, _LICENSE_NUMBER, _TAX_ID]
+_DELIVERED_ROW = [_ORDER_ID, _CUSTOMER_ID, _VEHICLE_ID, "delivered", 5000.00, _CREATED_AT, _LICENSE_NUMBER, _TAX_ID]
 _ORDER_DICT = {
     "id": _ORDER_ID,
     "customerId": _CUSTOMER_ID,
@@ -49,6 +55,8 @@ _ORDER_DICT = {
     "status": "pending",
     "amount": 5000.0,
     "createdAt": _CREATED_AT.isoformat(),
+    "retrieverLicense": None,
+    "retrieverTaxId": None,
 }
 
 _PAYMENT_COLS = [
@@ -293,6 +301,173 @@ class TestGetPaymentByOrder:
         assert call_kwargs.get("order_id") == _ORDER_ID
 
 
+class TestSetRetriever:
+    def test_returns_200_with_retriever_info(self):
+        _mock_conn.run.side_effect = [[_CONFIRMED_ROW], [_RETRIEVER_SET_ROW]]
+        _mock_conn.columns = _ORDER_COLS
+
+        resp = orders.handler(
+            _event("PUT /orders/{id}/retriever", path_id=_ORDER_ID,
+                   body={"licenseNumber": _LICENSE_NUMBER, "taxId": _TAX_ID}),
+            None,
+        )
+
+        assert resp["statusCode"] == 200
+        body = json.loads(resp["body"])
+        assert body["retrieverLicense"] == _LICENSE_NUMBER
+        assert body["retrieverTaxId"] == _TAX_ID
+
+    def test_stores_license_and_tax_id(self):
+        _mock_conn.run.side_effect = [[_CONFIRMED_ROW], [_RETRIEVER_SET_ROW]]
+        _mock_conn.columns = _ORDER_COLS
+
+        orders.handler(
+            _event("PUT /orders/{id}/retriever", path_id=_ORDER_ID,
+                   body={"licenseNumber": _LICENSE_NUMBER, "taxId": _TAX_ID}),
+            None,
+        )
+
+        update_kwargs = _mock_conn.run.call_args_list[1].kwargs
+        assert update_kwargs.get("retriever_license") == _LICENSE_NUMBER
+        assert update_kwargs.get("retriever_tax_id") == _TAX_ID
+
+    def test_missing_license_number_returns_400(self):
+        resp = orders.handler(
+            _event("PUT /orders/{id}/retriever", path_id=_ORDER_ID, body={"taxId": _TAX_ID}),
+            None,
+        )
+
+        assert resp["statusCode"] == 400
+        _mock_conn.run.assert_not_called()
+
+    def test_missing_tax_id_returns_400(self):
+        resp = orders.handler(
+            _event("PUT /orders/{id}/retriever", path_id=_ORDER_ID, body={"licenseNumber": _LICENSE_NUMBER}),
+            None,
+        )
+
+        assert resp["statusCode"] == 400
+        _mock_conn.run.assert_not_called()
+
+    def test_returns_403_when_not_owner(self):
+        _mock_conn.run.return_value = [_CONFIRMED_ROW]
+        _mock_conn.columns = _ORDER_COLS
+
+        resp = orders.handler(
+            _event("PUT /orders/{id}/retriever", path_id=_ORDER_ID, sub="other-user",
+                   body={"licenseNumber": _LICENSE_NUMBER, "taxId": _TAX_ID}),
+            None,
+        )
+
+        assert resp["statusCode"] == 403
+
+    def test_returns_404_when_order_not_found(self):
+        _mock_conn.run.return_value = []
+        _mock_conn.columns = _ORDER_COLS
+
+        resp = orders.handler(
+            _event("PUT /orders/{id}/retriever", path_id=_ORDER_ID,
+                   body={"licenseNumber": _LICENSE_NUMBER, "taxId": _TAX_ID}),
+            None,
+        )
+
+        assert resp["statusCode"] == 404
+
+    def test_returns_409_when_order_not_confirmed(self):
+        _mock_conn.run.return_value = [_ORDER_ROW]
+        _mock_conn.columns = _ORDER_COLS
+
+        resp = orders.handler(
+            _event("PUT /orders/{id}/retriever", path_id=_ORDER_ID,
+                   body={"licenseNumber": _LICENSE_NUMBER, "taxId": _TAX_ID}),
+            None,
+        )
+
+        assert resp["statusCode"] == 409
+
+    def test_admin_can_set_retriever_for_any_order(self):
+        _mock_conn.run.side_effect = [[_CONFIRMED_ROW], [_RETRIEVER_SET_ROW]]
+        _mock_conn.columns = _ORDER_COLS
+
+        resp = orders.handler(
+            _event("PUT /orders/{id}/retriever", path_id=_ORDER_ID, sub="other-user",
+                   groups=["admin"], body={"licenseNumber": _LICENSE_NUMBER, "taxId": _TAX_ID}),
+            None,
+        )
+
+        assert resp["statusCode"] == 200
+
+
+class TestPickupOrder:
+    def test_returns_200_on_success(self):
+        _mock_conn.run.side_effect = [[_RETRIEVER_SET_ROW], [_DELIVERED_ROW]]
+        _mock_conn.columns = _ORDER_COLS
+
+        resp = orders.handler(
+            _event("POST /orders/{id}/pickup", path_id=_ORDER_ID, groups=["operator"]),
+            None,
+        )
+
+        assert resp["statusCode"] == 200
+        body = json.loads(resp["body"])
+        assert body["status"] == "delivered"
+        assert body["retrieverLicense"] == _LICENSE_NUMBER
+        assert body["retrieverTaxId"] == _TAX_ID
+
+    def test_returns_403_when_not_operator(self):
+        resp = orders.handler(
+            _event("POST /orders/{id}/pickup", path_id=_ORDER_ID),
+            None,
+        )
+
+        assert resp["statusCode"] == 403
+        _mock_conn.run.assert_not_called()
+
+    def test_returns_404_when_order_not_found(self):
+        _mock_conn.run.return_value = []
+        _mock_conn.columns = _ORDER_COLS
+
+        resp = orders.handler(
+            _event("POST /orders/{id}/pickup", path_id=_ORDER_ID, groups=["operator"]),
+            None,
+        )
+
+        assert resp["statusCode"] == 404
+
+    def test_returns_409_when_order_not_confirmed(self):
+        _mock_conn.run.return_value = [_ORDER_ROW]
+        _mock_conn.columns = _ORDER_COLS
+
+        resp = orders.handler(
+            _event("POST /orders/{id}/pickup", path_id=_ORDER_ID, groups=["operator"]),
+            None,
+        )
+
+        assert resp["statusCode"] == 409
+
+    def test_returns_422_when_no_retriever_designated(self):
+        _mock_conn.run.return_value = [_CONFIRMED_ROW]
+        _mock_conn.columns = _ORDER_COLS
+
+        resp = orders.handler(
+            _event("POST /orders/{id}/pickup", path_id=_ORDER_ID, groups=["operator"]),
+            None,
+        )
+
+        assert resp["statusCode"] == 422
+
+    def test_admin_can_also_confirm_pickup(self):
+        _mock_conn.run.side_effect = [[_RETRIEVER_SET_ROW], [_DELIVERED_ROW]]
+        _mock_conn.columns = _ORDER_COLS
+
+        resp = orders.handler(
+            _event("POST /orders/{id}/pickup", path_id=_ORDER_ID, groups=["admin"]),
+            None,
+        )
+
+        assert resp["statusCode"] == 200
+
+
 class TestValidateOrder:
     def _sf_event(self, order_id=_ORDER_ID):
         return {
@@ -340,13 +515,22 @@ class TestConfirmOrder:
         }
 
     def test_returns_confirmed_order(self):
-        _mock_conn.run.return_value = [_CONFIRMED_ROW]
+        _mock_conn.run.side_effect = [[_CONFIRMED_ROW], []]
         _mock_conn.columns = _ORDER_COLS
 
         result = orders.handler(self._sf_event(), None)
 
         assert result["id"] == _ORDER_ID
         assert result["status"] == "confirmed"
+
+    def test_marks_stock_as_sold(self):
+        _mock_conn.run.side_effect = [[_CONFIRMED_ROW], []]
+        _mock_conn.columns = _ORDER_COLS
+
+        orders.handler(self._sf_event(), None)
+
+        stock_call = _mock_conn.run.call_args_list[1]
+        assert stock_call.kwargs.get("order_id") == _ORDER_ID
 
     def test_raises_when_not_found(self):
         _mock_conn.run.return_value = []
@@ -356,13 +540,13 @@ class TestConfirmOrder:
             orders.handler(self._sf_event(), None)
 
     def test_passes_order_id_to_query(self):
-        _mock_conn.run.return_value = [_CONFIRMED_ROW]
+        _mock_conn.run.side_effect = [[_CONFIRMED_ROW], []]
         _mock_conn.columns = _ORDER_COLS
 
         orders.handler(self._sf_event(), None)
 
-        call_kwargs = _mock_conn.run.call_args.kwargs
-        assert call_kwargs.get("id") == _ORDER_ID
+        order_call_kwargs = _mock_conn.run.call_args_list[0].kwargs
+        assert order_call_kwargs.get("id") == _ORDER_ID
 
 
 class TestRefundPayment:
@@ -505,6 +689,61 @@ class TestConfirmPayment:
         assert _mock_conn.run.call_count == 2
         update_kwargs = _mock_conn.run.call_args_list[1].kwargs
         assert update_kwargs.get("code") == _PAYMENT_CODE
+
+
+class TestRegisterLicense:
+    def test_returns_200_on_success(self):
+        _mock_conn.run.return_value = []
+
+        resp = orders.handler(
+            _event("PUT /users/{id}/license", path_id=_CUSTOMER_ID, body={"licenseNumber": _LICENSE_NUMBER}),
+            None,
+        )
+
+        assert resp["statusCode"] == 200
+        body = json.loads(resp["body"])
+        assert body["userId"] == _CUSTOMER_ID
+        assert body["licenseNumber"] == _LICENSE_NUMBER
+
+    def test_stores_user_id_and_license_number(self):
+        _mock_conn.run.return_value = []
+
+        orders.handler(
+            _event("PUT /users/{id}/license", path_id=_CUSTOMER_ID, body={"licenseNumber": _LICENSE_NUMBER}),
+            None,
+        )
+
+        call_kwargs = _mock_conn.run.call_args.kwargs
+        assert call_kwargs.get("user_id") == _CUSTOMER_ID
+        assert call_kwargs.get("license_number") == _LICENSE_NUMBER
+
+    def test_missing_license_number_returns_400(self):
+        resp = orders.handler(
+            _event("PUT /users/{id}/license", path_id=_CUSTOMER_ID, body={}),
+            None,
+        )
+
+        assert resp["statusCode"] == 400
+        _mock_conn.run.assert_not_called()
+
+    def test_returns_403_when_updating_another_user(self):
+        resp = orders.handler(
+            _event("PUT /users/{id}/license", path_id="other-user", body={"licenseNumber": _LICENSE_NUMBER}),
+            None,
+        )
+
+        assert resp["statusCode"] == 403
+        _mock_conn.run.assert_not_called()
+
+    def test_admin_can_register_for_any_user(self):
+        _mock_conn.run.return_value = []
+
+        resp = orders.handler(
+            _event("PUT /users/{id}/license", path_id="other-user", body={"licenseNumber": _LICENSE_NUMBER}, groups=["admin"]),
+            None,
+        )
+
+        assert resp["statusCode"] == 200
 
 
 def test_unknown_route_returns_404():
